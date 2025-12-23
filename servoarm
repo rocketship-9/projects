@@ -1,0 +1,134 @@
+#include <Servo.h>
+
+int clawPin = 2;
+Servo servoClaw;
+
+int potA = A1;
+int potB = A0;
+
+Servo servoA1;
+Servo servoA2; 
+Servo servoB;
+
+int lastServoAngleA = 0;
+int lastServoAngleB = 0;
+
+
+const int motorPins[4] = {8, 9, 10, 11}; // IN1-IN4
+const int joyXPin = A3;
+const int center = 512;
+const int deadzone = 40; // wider deadzone to prevent drift
+
+int stepSequence[8][4] = {
+  {1,0,0,0},
+  {1,1,0,0},
+  {0,1,0,0},
+  {0,1,1,0},
+  {0,0,1,0},
+  {0,0,1,1},
+  {0,0,0,1},
+  {1,0,0,1}
+};
+
+int currentStep = 0;
+
+unsigned long lastStepTime = 0;
+int stepDelay = 1500; // microseconds (start slower)
+
+// function prototypes
+void stepForward();
+void stepBackward();
+
+
+void setup() 
+{
+  pinMode(clawPin, INPUT_PULLUP);
+  servoClaw.attach(5);
+
+  pinMode(potA, INPUT);
+  pinMode(potB, INPUT);
+
+  servoA1.attach(6);
+  servoA2.attach(4);
+  servoB.attach(7);
+
+   for (int i = 0; i < 4; i++) {
+    pinMode(motorPins[i], OUTPUT);
+  }
+}
+
+void loop() 
+{
+  int sumA = 0;
+  int sumB = 0;
+  for (int i = 0; i < 5; i++) {
+    sumA += analogRead(potA);
+    sumB += analogRead(potB);
+  }
+  int angleA = sumA / 5;
+  int angleB = sumB / 5;
+  static int filteredB = angleB; 
+  filteredB = filteredB * 0.7 + angleB * 0.3; // smooth 30%
+
+  int servoAngleA = map(angleA, 0, 1023, 0, 180);
+  int servoAngleB = map(filteredB, 0, 1023, 0, 180);
+
+  if (abs(servoAngleA - lastServoAngleA) > 2) {
+    servoA1.write(servoAngleA);
+    servoA2.write(180-(servoAngleA));
+    lastServoAngleA = servoAngleA;
+  }
+
+  if (abs(servoAngleB - lastServoAngleB) > 2) {
+    servoB.write(servoAngleB);
+    lastServoAngleB = servoAngleB;
+  }
+  
+  //claw
+  if (digitalRead(clawPin) == LOW) 
+  {
+    servoClaw.write(125);
+  } 
+
+  else 
+  {
+    servoClaw.write(180);
+  }
+
+  int sum = 0;
+  for (int i = 0; i < 5; i++) sum += analogRead(joyXPin);
+  int jX = sum / 5;
+
+  // Direction
+  int dir = 0;
+  if (jX > center + deadzone) dir = 1;
+  else if (jX < center - deadzone) dir = -1;
+
+  // Speed mapping
+  if (dir != 0) {
+      int effort = abs(jX - center);
+      stepDelay = map(effort, deadzone, 512, 2000, 500); // slow → fast
+  }
+
+  // NON-BLOCKING STEPPER
+  if (dir != 0 && micros() - lastStepTime >= stepDelay) {
+      if (dir == 1) stepForward();
+      else stepBackward();
+      lastStepTime = micros();
+  }
+
+}
+
+void stepForward() {
+  currentStep = (currentStep + 1) % 8;
+  for (int i = 0; i < 4; i++) {
+    digitalWrite(motorPins[i], stepSequence[currentStep][i]);
+  }
+}
+
+void stepBackward() {
+  currentStep = (currentStep + 7) % 8;
+  for (int i = 0; i < 4; i++) {
+    digitalWrite(motorPins[i], stepSequence[currentStep][i]);
+  }
+}
