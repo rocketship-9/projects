@@ -3,16 +3,22 @@
 int clawPin = 2;
 Servo servoClaw;
 
-int potA = A1;
-int potB = A0;
-
-Servo servoA1;
-Servo servoA2; 
+Servo servoA; 
 Servo servoB;
 
-int lastServoAngleA = 0;
-int lastServoAngleB = 0;
+const int downA = 13;
+const int upA = 12;
+const int downB = 6;
+const int upB = 3;
 
+const float speed = 60.0;
+const float minAngle = 20.0;
+const float maxAngle = 160.0;
+
+float currentAngleA = 90.0;
+float currentAngleB = 90.0;
+
+unsigned long lastTime = 0;
 
 const int motorPins[4] = {8, 9, 10, 11}; // IN1-IN4
 const int joyXPin = A3;
@@ -45,12 +51,18 @@ void setup()
   pinMode(clawPin, INPUT_PULLUP);
   servoClaw.attach(5);
 
-  pinMode(potA, INPUT);
-  pinMode(potB, INPUT);
+  pinMode(downA, INPUT_PULLUP);
+  pinMode(upA, INPUT_PULLUP);
+  pinMode(downB, INPUT_PULLUP);
+  pinMode(upB, INPUT_PULLUP);
 
-  servoA1.attach(6);
-  servoA2.attach(4);
+  servoA.attach(4);
   servoB.attach(7);
+
+  servoA.write(currentAngleA);
+  servoB.write(currentAngleB);
+
+  lastTime = millis();
 
    for (int i = 0; i < 4; i++) {
     pinMode(motorPins[i], OUTPUT);
@@ -59,30 +71,61 @@ void setup()
 
 void loop() 
 {
-  int sumA = 0;
-  int sumB = 0;
-  for (int i = 0; i < 5; i++) {
-    sumA += analogRead(potA);
-    sumB += analogRead(potB);
+  unsigned long now = millis();
+  float dt = (now - lastTime) / 1000.0;
+  lastTime = now;
+
+  int directionA = 0;
+  int directionB = 0;
+
+  if (digitalRead(upA) == LOW)
+  {
+    directionA = +1;
   }
-  int angleA = sumA / 5;
-  int angleB = sumB / 5;
-  static int filteredB = angleB; 
-  filteredB = filteredB * 0.7 + angleB * 0.3; // smooth 30%
-
-  int servoAngleA = map(angleA, 0, 1023, 0, 180);
-  int servoAngleB = map(filteredB, 0, 1023, 0, 180);
-
-  if (abs(servoAngleA - lastServoAngleA) > 2) {
-    servoA1.write(servoAngleA);
-    servoA2.write(180-(servoAngleA));
-    lastServoAngleA = servoAngleA;
+  else if (digitalRead(downA) == LOW)
+  {
+    directionA = -1;
   }
 
-  if (abs(servoAngleB - lastServoAngleB) > 2) {
-    servoB.write(servoAngleB);
-    lastServoAngleB = servoAngleB;
+  if (digitalRead(upB) == LOW)
+  {
+    directionB = +1;
   }
+  else if (digitalRead(downB) == LOW)
+  {
+    directionB = -1;
+  }
+
+  float deltaAngleA = directionA * speed * dt;
+  float nextAngleA = currentAngleA + deltaAngleA;
+
+  float deltaAngleB = directionB * speed * dt;
+  float nextAngleB = currentAngleB + deltaAngleB;
+  
+  if (nextAngleA > maxAngle)
+  {
+    nextAngleA = maxAngle;
+  }
+  else if (nextAngleA < minAngle)
+  {
+    nextAngleA = minAngle;
+  }
+
+  if (nextAngleB > maxAngle)
+  {
+    nextAngleB = maxAngle;
+  }
+  else if (nextAngleB < minAngle)
+  {
+    nextAngleB = minAngle;
+  }
+
+  currentAngleA = nextAngleA;
+  currentAngleB = nextAngleB;
+
+  servoA.write(currentAngleA);
+  servoB.write(currentAngleB);
+
   
   //claw
   if (digitalRead(clawPin) == LOW) 
