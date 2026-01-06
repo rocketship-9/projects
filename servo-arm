@@ -6,24 +6,31 @@ Servo servoClaw;
 Servo servoA; 
 Servo servoB;
 
+// button definitions to move servo A (12/13) and B (6/3) up or down
 const int downA = 13;
 const int upA = 12;
 const int downB = 6;
 const int upB = 3;
 
+// servo movement speed and electronic limits
 const float speed = 60.0;
 const float minAngle = 20.0;
 const float maxAngle = 160.0;
 
+// initializes angles
 float currentAngleA = 90.0;
 float currentAngleB = 90.0;
 
+// last timestamp for time difference calculation
 unsigned long lastTime = 0;
 
+// defines stepper motor and joystick control pins
 const int motorPins[4] = {8, 9, 10, 11}; // IN1-IN4
 const int joyXPin = A3;
+
+// sets 512 as joystick center (between 0 & 1023) and creates a deadzone to prevent drift
 const int center = 512;
-const int deadzone = 40; // wider deadzone to prevent drift
+const int deadzone = 40;
 
 int stepSequence[8][4] = {
   {1,0,0,0},
@@ -36,12 +43,11 @@ int stepSequence[8][4] = {
   {1,0,0,1}
 };
 
+// tracks step in the sequence and delay between steps
 int currentStep = 0;
-
 unsigned long lastStepTime = 0;
-int stepDelay = 1500; // microseconds (start slower)
+int stepDelay = 1500;
 
-// function prototypes
 void stepForward();
 void stepBackward();
 
@@ -64,17 +70,21 @@ void setup()
 
   lastTime = millis();
 
-   for (int i = 0; i < 4; i++) {
+  // sets the stepper motor pins as outputs
+  for (int i = 0; i < 4; i++) 
+  {
     pinMode(motorPins[i], OUTPUT);
   }
 }
 
 void loop() 
 {
+  // gets current time and calculates change in time (dt) since last loop
   unsigned long now = millis();
   float dt = (now - lastTime) / 1000.0;
   lastTime = now;
 
+  // direction variables for servos (+1 = up, -1 = down)
   int directionA = 0;
   int directionB = 0;
 
@@ -96,12 +106,14 @@ void loop()
     directionB = -1;
   }
 
+  // calculates how much each servo should move based on direction speed and time passed
   float deltaAngleA = directionA * speed * dt;
   float nextAngleA = currentAngleA + deltaAngleA;
 
   float deltaAngleB = directionB * speed * dt;
   float nextAngleB = currentAngleB + deltaAngleB;
-  
+
+  // applies electronic limits to both servos
   if (nextAngleA > maxAngle)
   {
     nextAngleA = maxAngle;
@@ -120,6 +132,7 @@ void loop()
     nextAngleB = minAngle;
   }
 
+  // updates angles and tells servos to move to the new positions
   currentAngleA = nextAngleA;
   currentAngleB = nextAngleB;
 
@@ -127,7 +140,7 @@ void loop()
   servoB.write(currentAngleB);
 
   
-  //claw
+  // claw
   if (digitalRead(clawPin) == LOW) 
   {
     servoClaw.write(125);
@@ -138,22 +151,23 @@ void loop()
     servoClaw.write(180);
   }
 
+  // reads joystick and averages values to reduce noise
   int sum = 0;
   for (int i = 0; i < 5; i++) sum += analogRead(joyXPin);
   int jX = sum / 5;
 
-  // Direction
+  // determines direction of joystick (right = 1, left = -1, center = 0)
   int dir = 0;
   if (jX > center + deadzone) dir = 1;
   else if (jX < center - deadzone) dir = -1;
 
-  // Speed mapping
+  // if joystick is moved from the center, calculate how far it is from the center (effort) and map it to a delay
   if (dir != 0) {
       int effort = abs(jX - center);
-      stepDelay = map(effort, deadzone, 512, 2000, 500); // slow → fast
+      stepDelay = map(effort, deadzone, 512, 2000, 500); // slow -> fast
   }
 
-  // NON-BLOCKING STEPPER
+  // if theres a direction command an enough time has passed, move stepper motor and record time accordingly
   if (dir != 0 && micros() - lastStepTime >= stepDelay) {
       if (dir == 1) stepForward();
       else stepBackward();
